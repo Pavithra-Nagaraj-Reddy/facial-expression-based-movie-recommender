@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Emotion Based Movie Recommender</title>
+
+<style>
+
+body{
+    margin:0;
+    font-family:Arial;
+    color:white;
+    background:url("/static/bg.jpg") no-repeat center center/cover;
+}
+
+body::before{
+    content:"";
+    position:fixed;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.75);
+    z-index:-1;
+}
+
+.container{
+    width:95%;
+    margin:auto;
+    padding:20px;
+}
+
+h1{
+    text-align:center;
+    color:red;
+}
+
+video{
+    display:block;
+    margin:auto;
+    border-radius:15px;
+    border:3px solid white;
+}
+
+#language{
+    display:block;
+    margin:20px auto;
+    padding:10px;
+    border-radius:10px;
+    font-size:16px;
+}
+
+.detect-btn{
+    display:block;
+    margin:20px auto;
+    padding:12px 30px;
+    border:none;
+    border-radius:10px;
+    background:red;
+    color:white;
+    cursor:pointer;
+    font-size:18px;
+}
+
+.detect-btn:hover{
+    background:darkred;
+}
+
+#emotion{
+    text-align:center;
+    margin-top:20px;
+    font-size:28px;
+}
+
+.movie-row{
+    display:flex;
+    gap:25px;
+    overflow-x:auto;
+    padding:25px;
+    scroll-behavior:smooth;
+}
+
+.movie-row::-webkit-scrollbar{
+    height:8px;
+}
+
+.movie-row::-webkit-scrollbar-thumb{
+    background:red;
+    border-radius:10px;
+}
+
+.movie-card{
+    min-width:220px;
+    flex-shrink:0;
+    text-align:center;
+    position:relative;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+.movie-card:hover{
+    transform:scale(1.05);
+}
+
+.movie-card img{
+    width:220px;
+    height:320px;
+    border-radius:15px;
+    object-fit:cover;
+    cursor:pointer;
+}
+
+.movie-card h3{
+    margin-top:10px;
+}
+
+.rating{
+    color:gold;
+    font-size:22px;
+    font-weight:bold;
+}
+
+.trailer-btn{
+    color:#ff4d4d;
+    cursor:pointer;
+    margin-top:5px;
+    font-size:18px;
+}
+
+.trailer-btn:hover{
+    text-decoration:underline;
+}
+
+.platform-menu{
+    display:none;
+    position:absolute;
+    top:80px;
+    left:50%;
+    transform:translateX(-50%);
+    width:220px;
+    background:white;
+    color:black;
+    border-radius:15px;
+    overflow:hidden;
+    z-index:999;
+}
+
+.movie-card:hover .platform-menu,
+.movie-card:focus-within .platform-menu{
+    display:block;
+}
+
+.platform-menu a{
+    display:flex;
+    gap:10px;
+    padding:15px;
+    text-decoration:none;
+    color:black;
+    font-size:18px;
+}
+
+.platform-menu a:hover{
+    background:#f0f0f0;
+}
+
+.modal{
+    display:none;
+    position:fixed;
+    z-index:9999;
+    left:0;
+    top:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.9);
+    justify-content:center;
+    align-items:center;
+}
+
+.modal-content{
+    width:85%;
+    max-width:1000px;
+    position:relative;
+}
+
+.close{
+    position:absolute;
+    top:-40px;
+    right:0;
+    color:white;
+    font-size:40px;
+    cursor:pointer;
+}
+
+iframe{
+    width:100%;
+    height:500px;
+    border-radius:15px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🎬 Emotion Based Movie Recommender</h1>
+
+<video id="video" width="320" autoplay></video>
+
+<select id="language">
+
+<option value="en">English</option>
+<option value="hi">Hindi</option>
+<option value="kn">Kannada</option>
+<option value="te">Telugu</option>
+<option value="ta">Tamil</option>
+
+</select>
+
+<button class="detect-btn" onclick="capture()">
+Detect Emotion
+</button>
+
+<h2 id="emotion"></h2>
+
+<div id="movies"></div>
+
+</div>
+
+<!-- TRAILER MODAL -->
+
+<div class="modal" id="trailerModal">
+
+    <div class="modal-content">
+
+        <span class="close" onclick="closeTrailer()">
+            &times;
+        </span>
+
+        <iframe id="trailerFrame"
+                frameborder="0"
+                allow="autoplay; encrypted-media"
+                allowfullscreen>
+        </iframe>
+
+    </div>
+
+</div>
+
+<script>
+
+const video = document.getElementById("video");
+
+navigator.mediaDevices.getUserMedia({
+    video:true
+})
+.then(stream=>{
+    video.srcObject = stream;
+});
+
+function speak(text){
+
+    let speech = new SpeechSynthesisUtterance(text);
+
+    speech.lang = "en-US";
+
+    window.speechSynthesis.speak(speech);
+}
+
+function capture(){
+
+    let canvas = document.createElement("canvas");
+
+    canvas.width = video.videoWidth;
+
+    canvas.height = video.videoHeight;
+
+    let ctx = canvas.getContext("2d");
+
+    let frames = [];
+
+    let count = 0;
+
+    let interval = setInterval(()=>{
+
+        ctx.drawImage(video,0,0);
+
+        frames.push(
+            canvas.toDataURL("image/jpeg")
+        );
+
+        count++;
+
+        if(count === 3){
+
+            clearInterval(interval);
+
+            fetch("/detect",{
+
+                method:"POST",
+
+                headers:{
+                    "Content-Type":"application/json"
+                },
+
+                body:JSON.stringify({
+                    frames:frames,
+                    language:document.getElementById("language").value
+                })
+
+            })
+
+            .then(res=>res.json())
+
+            .then(data=>{
+
+                document.getElementById("emotion").innerHTML =
+                "Detected Emotion : " + data.emotion.toUpperCase();
+
+                speak("Your mood is " + data.emotion);
+
+                let moviesDiv =
+                document.getElementById("movies");
+
+                moviesDiv.innerHTML = `
+
+                    <div class="movie-row" id="row"></div>
+
+                `;
+
+                let row = document.getElementById("row");
+
+                data.movies.forEach(movie=>{
+
+                    let menu = "";
+
+                    if(movie.platforms){
+
+                        Object.keys(movie.platforms).forEach(platform => {
+                            let icon = "🎥";
+
+                            if(platform.includes("Netflix")) icon = "🟥";
+                            if(platform.includes("Prime")) icon = "🔵";
+                            if(platform.includes("Hotstar")) icon = "⭐";
+                            if(platform.includes("YouTube")) icon = "▶️";
+
+                            menu += `
+                                <a href="${movie.platforms[platform]}" target="_blank">
+                                    ${icon} ${platform}
+                                </a>
+                            `;
+                        });
+
+                    }
+                    row.innerHTML += `
+
+                        <div class="movie-card">
+
+                            <img src="${movie.img}"
+                            onclick="openTrailer('${movie.trailer}')">
+
+                            <h3>${movie.name}</h3>
+
+                            <div class="trailer-btn"
+                            onclick="openTrailer('${movie.trailer}')">
+
+                            ▶ Watch Trailer
+
+                            </div>
+
+                            <div class="rating">
+                                ⭐ ${movie.rating ? movie.rating.toFixed(1) : "N/A"}
+                            </div>
+
+                            <div class="platform-menu">
+
+                                ${menu}
+
+                            </div>
+
+                        </div>
+
+                    `;
+                });
+
+            });
+
+        }
+
+    },200);
+
+}
+
+function openTrailer(url){
+
+    if(!url){
+        alert("Trailer not available");
+        return;
+    }
+
+    // FORCE autoplay
+    url = url + "?autoplay=1";
+
+    document.getElementById("trailerFrame").src = url;
+    document.getElementById("trailerModal").style.display = "flex";
+}
+
+function closeTrailer(){
+
+    document.getElementById("trailerModal").style.display = "none";
+    document.getElementById("trailerFrame").src = "";
+}
+
+</script>
+
+</body>
+
+</html>
